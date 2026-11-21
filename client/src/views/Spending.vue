@@ -519,6 +519,7 @@ export default {
 
 .chart-legend {
   display: flex;
+  flex-wrap: wrap;
   gap: 1.5rem;
   font-size: 0.875rem;
 }
@@ -611,9 +612,11 @@ export default {
 
 .chart-container {
   padding: 1.5rem 0;
+  overflow-x: auto; /* chart scrolls inside its card on narrow screens */
 }
 
 .bar-chart {
+  min-width: 480px; /* keeps bars readable; the container scrolls below this width */
   display: flex;
   gap: 1.5rem;
   height: 350px;
@@ -694,7 +697,7 @@ export default {
 
 .two-column-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(450px, 100%), 1fr)); /* min() lets it shrink below 450px on phones */
   gap: 1.75rem;
 }
 

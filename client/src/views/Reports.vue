@@ -366,9 +366,11 @@ export default {
 .chart-container {
   padding: 2rem 1rem;
   min-height: 300px;
+  overflow-x: auto; /* chart scrolls inside its card on narrow screens */
 }
 
 .bar-chart {
+  min-width: 480px; /* keeps bars readable; the container scrolls below this width */
   display: flex;
   align-items: flex-end;
   justify-content: space-around;

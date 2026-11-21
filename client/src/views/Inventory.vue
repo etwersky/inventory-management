@@ -242,6 +242,7 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
   gap: 1.5rem;
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid #e2e8f0;
@@ -258,7 +259,8 @@ export default {
   position: relative;
   display: flex;
   align-items: center;
-  min-width: 300px;
+  width: 300px;
+  max-width: 100%; /* was min-width: 300px, which overflowed phone screens */
 }
 
 .search-icon {

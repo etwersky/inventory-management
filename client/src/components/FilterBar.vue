@@ -115,9 +115,11 @@ export default {
 
 .filters-grid {
   display: flex;
+  flex-wrap: wrap; /* wrap instead of forcing the page wider than the viewport */
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem 1rem;
   flex: 1;
+  min-width: 0;
 }
 
 .filter-group {
@@ -134,6 +136,7 @@ export default {
 }
 
 .filter-select {
+  max-width: 100%;
   padding: 0.4rem 0.75rem;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
@@ -184,5 +187,27 @@ export default {
 .reset-filters-btn svg {
   width: 18px;
   height: 18px;
+}
+
+/* Matches the shell's drawer breakpoint (900px): tighter gutters, and each filter fills a row
+   so the selects shrink to fit narrow screens. */
+@media (max-width: 900px) {
+  .filters-container {
+    padding: 0 var(--space-4, 16px);
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 600px) {
+  .filter-group {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+
+  .filter-select {
+    flex: 1;
+    min-width: 0;
+    max-width: 200px;
+  }
 }
 </style>

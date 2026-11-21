@@ -812,9 +812,16 @@ export default {
 
 .charts-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr)); /* minmax(0,..) stops wide charts from stretching the column */
   gap: 1.25rem;
   margin-bottom: 1.5rem;
+}
+
+/* One column at the shell's drawer breakpoint (900px) */
+@media (max-width: 900px) {
+  .charts-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .chart-card.full-width {
@@ -823,6 +830,7 @@ export default {
 
 .chart-content {
   padding: 1rem;
+  overflow-x: auto; /* wide charts scroll inside the card, not the page */
 }
 
 .donut-chart {

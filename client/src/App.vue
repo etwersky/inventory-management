@@ -1,23 +1,47 @@
 <template>
-  <div class="app-shell">
-    <aside class="sidebar">
+  <div class="app-shell" :class="{ 'is-collapsed': sidebarCollapsed }">
+    <aside
+      id="app-sidebar"
+      class="sidebar"
+      :class="{ open: sidebarOpen, collapsed: sidebarCollapsed }"
+    >
       <div class="sidebar-brand">
-        <h1>{{ t('nav.companyName') }}</h1>
-        <span class="brand-subtitle">{{ t('nav.subtitle') }}</span>
+        <!-- .brand-text is visually hidden (not removed) in rail mode -->
+        <div class="brand-text">
+          <h1>{{ t('nav.companyName') }}</h1>
+          <span class="brand-subtitle">{{ t('nav.subtitle') }}</span>
+        </div>
       </div>
 
-      <nav class="sidebar-nav">
+      <nav class="sidebar-nav" aria-label="Primary">
+        <!-- title gives a native tooltip when the label is hidden in rail mode -->
         <router-link
           v-for="item in navItems"
           :key="item.path"
           :to="item.path"
           class="nav-item"
           :class="{ active: isActive(item.path) }"
+          :title="item.label"
+          @click="sidebarOpen = false"
         >
-          <span class="nav-icon">{{ item.icon }}</span>
+          <span class="nav-icon" aria-hidden="true">{{ item.icon }}</span>
           <span class="nav-label">{{ item.label }}</span>
         </router-link>
       </nav>
+
+      <button
+        type="button"
+        class="sidebar-toggle"
+        :aria-expanded="!sidebarCollapsed"
+        aria-controls="app-sidebar"
+        aria-label="Toggle sidebar width"
+        :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+        @click="sidebarCollapsed = !sidebarCollapsed"
+      >
+        <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" />
+        </svg>
+      </button>
 
       <div class="sidebar-footer">
         <LanguageSwitcher />
@@ -28,7 +52,24 @@
       </div>
     </aside>
 
+    <div v-if="sidebarOpen" class="sidebar-backdrop" @click="sidebarOpen = false"></div>
+
     <div class="content-shell">
+      <header class="topbar">
+        <button
+          type="button"
+          class="menu-button"
+          aria-label="Open navigation"
+          aria-controls="app-sidebar"
+          :aria-expanded="sidebarOpen"
+          @click="sidebarOpen = true"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+        </button>
+        <span class="topbar-title">{{ t('nav.companyName') }}</span>
+      </header>
       <div class="filter-bar-wrapper">
         <FilterBar />
       </div>
@@ -53,7 +94,7 @@
 </template>
 
 <script>
-import { ref, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from './api'
 import { useAuth } from './composables/useAuth'
@@ -80,6 +121,25 @@ export default {
     const showProfileDetails = ref(false)
     const showTasks = ref(false)
     const apiTasks = ref([])
+
+    // sidebarOpen: mobile drawer visibility.
+    const sidebarOpen = ref(false)
+
+    // sidebarCollapsed: icons-only rail. A saved choice wins; otherwise start collapsed
+    // below 1200px so the content column keeps enough room.
+    const SIDEBAR_KEY = 'sidebar-collapsed'
+    const readSavedSidebar = () => {
+      try { return localStorage.getItem(SIDEBAR_KEY) } catch { return null } // storage can throw (private mode, blocked)
+    }
+    const savedSidebar = readSavedSidebar()
+    const sidebarCollapsed = ref(
+      savedSidebar !== null ? savedSidebar === 'true' : window.matchMedia('(max-width: 1199px)').matches
+    )
+    watch(sidebarCollapsed, (value) => {
+      try { localStorage.setItem(SIDEBAR_KEY, String(value)) } catch { /* persistence is optional */ }
+    })
+    // Close the drawer after navigating
+    watch(() => route.path, () => { sidebarOpen.value = false })
 
     const navItems = [
       { path: '/',           label: t('nav.overview'),       icon: '⊞' },
@@ -169,6 +229,8 @@ export default {
       route,
       navItems,
       isActive,
+      sidebarOpen,
+      sidebarCollapsed,
       showProfileDetails,
       showTasks,
       tasks,
@@ -183,6 +245,17 @@ export default {
 <style>
 :root {
   --sidebar-width: 240px;
+  --sidebar-width-collapsed: 64px; /* 48px inner width (8px padding each side) fits the 32px avatar and 20px icons */
+  --topbar-height: 56px;           /* mobile top bar; the sticky filter bar sits right below it */
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.35);
+  --sidebar-transition: 0.2s ease;
+
+  /* z-index scale. Existing values kept: filter bar 50, sidebar 100. Modals use 1000/2000 so they
+     stay above everything here, including a drawer opened from the sidebar footer. */
+  --z-filter-bar: 50;
+  --z-topbar: 60;      /* above the filter bar, below the backdrop */
+  --z-backdrop: 90;    /* covers topbar and content while the drawer is open */
+  --z-sidebar: 100;
   --sidebar-bg: #ffffff;
   --sidebar-text: #64748b;
   --sidebar-text-active: #0f172a;
@@ -235,8 +308,17 @@ body {
 }
 
 /* ── Sidebar ── */
+.app-shell {
+  --sidebar-pad: var(--space-4); /* sidebar inner padding; footer menus offset by it */
+  --sidebar-current: var(--sidebar-width);
+}
+
+.app-shell.is-collapsed {
+  --sidebar-current: var(--sidebar-width-collapsed);
+}
+
 .sidebar {
-  width: var(--sidebar-width);
+  width: var(--sidebar-current);
   flex-shrink: 0;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
@@ -246,12 +328,14 @@ body {
   top: 0;
   left: 0;
   height: 100vh;
-  overflow-y: auto;
-  z-index: 100;
+  /* overflow stays visible so footer menus can open to the right of the sidebar;
+     only the nav list scrolls (see .sidebar-nav) */
+  z-index: var(--z-sidebar);
+  transition: width var(--sidebar-transition);
 }
 
 .sidebar-brand {
-  padding: var(--space-5) var(--space-4);
+  padding: var(--space-5) var(--sidebar-pad);
   border-bottom: 1px solid var(--sidebar-border);
 }
 
@@ -271,6 +355,8 @@ body {
 
 .sidebar-nav {
   flex: 1;
+  min-height: 0; /* lets the flex child shrink so overflow-y scrolls instead of growing the sidebar */
+  overflow-y: auto;
   padding: var(--space-3) var(--space-2);
   display: flex;
   flex-direction: column;
@@ -295,6 +381,11 @@ body {
   color: var(--text-primary);
 }
 
+.nav-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .nav-item.active {
   background: var(--sidebar-active-bg);
   color: var(--sidebar-active-text);
@@ -316,37 +407,326 @@ body {
   opacity: 1;
 }
 
-.sidebar-footer {
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--sidebar-border);
+.nav-label {
+  white-space: nowrap;
+}
+
+/* Collapse toggle */
+.sidebar-toggle {
+  align-self: stretch;
   display: flex;
   align-items: center;
+  justify-content: center;
+  height: 36px;
+  margin: var(--space-2) var(--space-2) 0;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  color: var(--sidebar-text);
+  cursor: pointer;
+}
+
+.sidebar-toggle:hover {
+  background: var(--sidebar-hover-bg);
+  color: var(--text-primary);
+}
+
+.sidebar-toggle:focus-visible {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: var(--focus-ring);
+}
+
+.toggle-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform var(--sidebar-transition);
+}
+
+/* Chevron points inward when expanded; flipped to point outward when collapsed */
+.sidebar.collapsed .toggle-icon {
+  transform: scaleX(-1);
+}
+
+.sidebar-footer {
+  padding: var(--space-3) var(--sidebar-pad);
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--sidebar-border);
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
+}
+
+/* Footer controls are child components with scoped CSS; these global selectors are more
+   specific (3 classes) than their scoped ones (class + attribute), so they win. */
+.sidebar-footer .language-button,
+.sidebar-footer .profile-button {
+  width: 100%;
+}
+
+.sidebar-footer .profile-name,
+.sidebar-footer .language-label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-footer .chevron {
+  margin-left: auto;
+}
+
+/* Menus open to the right of the sidebar, anchored to the bottom of their control */
+.sidebar-footer .dropdown-menu {
+  top: auto;
+  bottom: 0;
+  right: auto;
+  left: calc(100% + var(--sidebar-pad) + var(--space-2));
+}
+
+/* ── Icons-only rail ── */
+.sidebar.collapsed {
+  --sidebar-pad: var(--space-2);
+}
+
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.sidebar.collapsed .sidebar-brand {
+  padding-block: var(--space-5);
+}
+
+.sidebar.collapsed .sidebar-footer {
+  align-items: center;
+}
+
+.sidebar.collapsed .sidebar-footer .language-button,
+.sidebar.collapsed .sidebar-footer .profile-button {
+  width: auto;
+  padding: var(--space-1);
+  justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-footer .language-button {
+  padding: var(--space-2);
+}
+
+/* Visually hidden, not display:none, so screen readers still announce each link/button name */
+.sidebar.collapsed .nav-label,
+.sidebar.collapsed .brand-text,
+.sidebar.collapsed .sidebar-footer .profile-name,
+.sidebar.collapsed .sidebar-footer .language-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.sidebar.collapsed .sidebar-footer .chevron {
+  display: none; /* decorative only; the button still toggles its menu */
 }
 
 /* ── Content shell ── */
 .content-shell {
-  margin-left: var(--sidebar-width);
+  margin-left: var(--sidebar-current);
   flex: 1;
+  min-width: 0; /* flex items default to min-width:auto, which let wide children widen the page */
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  transition: margin-left var(--sidebar-transition);
+}
+
+/* Topbar and backdrop only exist in drawer mode */
+.topbar,
+.sidebar-backdrop {
+  display: none;
 }
 
 /* FilterBar sits sticky at top of content area */
 .filter-bar-wrapper {
   position: sticky;
   top: 0;
-  z-index: 50;
+  z-index: var(--z-filter-bar);
   background: var(--surface-bg);
   border-bottom: 1px solid var(--surface-border);
 }
 
 .main-content {
   flex: 1;
+  min-width: 0;
   padding: var(--space-8);
   max-width: 1400px;
   width: 100%;
+}
+
+/* ── Drawer mode ──
+   900px: below this a 240px sidebar leaves under ~660px for content, so it becomes an
+   off-canvas drawer (the 901-1199px range uses the rail instead). */
+@media (max-width: 900px) {
+  .app-shell .content-shell,
+  .app-shell.is-collapsed .content-shell {
+    margin-left: 0; /* the sidebar no longer takes layout space */
+  }
+
+  .sidebar,
+  .sidebar.collapsed {
+    --sidebar-pad: var(--space-4);
+    width: var(--sidebar-width);
+    max-width: 85vw;
+    transform: translateX(-100%);
+    box-shadow: var(--shadow-md);
+    /* hidden while closed so off-screen links are not reachable by Tab; delayed until the slide-out ends */
+    visibility: hidden;
+    transition: transform var(--sidebar-transition), visibility 0s linear 0.2s;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform var(--sidebar-transition), visibility 0s;
+  }
+
+  /* The drawer always shows labels: undo the rail styling */
+  .sidebar.collapsed .nav-item {
+    justify-content: flex-start;
+    padding-inline: var(--space-3);
+  }
+
+  .sidebar.collapsed .nav-label,
+  .sidebar.collapsed .brand-text,
+  .sidebar.collapsed .sidebar-footer .profile-name,
+  .sidebar.collapsed .sidebar-footer .language-label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: hidden;
+    clip-path: none;
+  }
+
+  .sidebar.collapsed .sidebar-footer {
+    align-items: stretch;
+  }
+
+  .sidebar.collapsed .sidebar-footer .language-button,
+  .sidebar.collapsed .sidebar-footer .profile-button {
+    width: 100%;
+    padding: 0.5rem 0.875rem; /* original padding from the components */
+    justify-content: flex-start;
+  }
+
+  .sidebar.collapsed .sidebar-footer .chevron {
+    display: block;
+  }
+
+  .sidebar-toggle {
+    display: none;
+  }
+
+  /* No room beside the drawer on phones, so menus open upward inside it */
+  .sidebar-footer .dropdown-menu {
+    bottom: calc(100% + var(--space-2));
+    left: 0;
+    min-width: 0;
+    width: calc(var(--sidebar-width) - 2 * var(--sidebar-pad));
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-backdrop);
+    background: rgba(15, 23, 42, 0.4);
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: var(--topbar-height);
+    padding: 0 var(--space-4);
+    position: sticky;
+    top: 0;
+    z-index: var(--z-topbar);
+    background: var(--sidebar-bg);
+    border-bottom: 1px solid var(--sidebar-border);
+  }
+
+  .menu-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: var(--surface-card);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-sm);
+    color: var(--sidebar-text);
+    cursor: pointer;
+  }
+
+  .menu-button:hover {
+    background: var(--sidebar-hover-bg);
+    color: var(--text-primary);
+  }
+
+  .menu-button:focus-visible {
+    outline: none;
+    border-color: var(--brand);
+    box-shadow: var(--focus-ring);
+  }
+
+  .menu-button svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .topbar-title {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+  }
+
+  /* Stick the filter bar under the topbar */
+  .filter-bar-wrapper {
+    top: var(--topbar-height);
+  }
+
+  .main-content {
+    padding: var(--space-4);
+  }
+}
+
+/* 600px: the wrapped filter bar gets tall, so on phones it scrolls with the page instead of
+   covering a large part of the screen. */
+@media (max-width: 600px) {
+  .filter-bar-wrapper {
+    position: static;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .content-shell,
+  .toggle-icon {
+    transition: none;
+  }
 }
 
 /* ── Global utility classes ── */
