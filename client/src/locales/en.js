@@ -7,6 +7,10 @@ export default {
     finance: 'Finance',
     restocking: 'Restocking',
     demandForecast: 'Demand Forecast',
+    reports: 'Reports',
+    mainNavigation: 'Main navigation',
+    expandSidebar: 'Expand sidebar',
+    collapseSidebar: 'Collapse sidebar',
     companyName: 'Catalyst Components',
     subtitle: 'Inventory Management System'
   },

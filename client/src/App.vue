@@ -6,29 +6,6 @@
           <h1>{{ t('nav.companyName') }}</h1>
           <span class="subtitle">{{ t('nav.subtitle') }}</span>
         </div>
-        <nav class="nav-tabs">
-          <router-link to="/" :class="{ active: $route.path === '/' }">
-            {{ t('nav.overview') }}
-          </router-link>
-          <router-link to="/inventory" :class="{ active: $route.path === '/inventory' }">
-            {{ t('nav.inventory') }}
-          </router-link>
-          <router-link to="/orders" :class="{ active: $route.path === '/orders' }">
-            {{ t('nav.orders') }}
-          </router-link>
-          <router-link to="/spending" :class="{ active: $route.path === '/spending' }">
-            {{ t('nav.finance') }}
-          </router-link>
-          <router-link to="/demand" :class="{ active: $route.path === '/demand' }">
-            {{ t('nav.demandForecast') }}
-          </router-link>
-          <router-link to="/restocking" :class="{ active: $route.path === '/restocking' }">
-            {{ t('nav.restocking') }}
-          </router-link>
-          <router-link to="/reports" :class="{ active: $route.path === '/reports' }">
-            Reports
-          </router-link>
-        </nav>
         <LanguageSwitcher />
         <ProfileMenu
           @show-profile-details="showProfileDetails = true"
@@ -36,10 +13,54 @@
         />
       </div>
     </header>
-    <FilterBar />
-    <main class="main-content">
-      <router-view />
-    </main>
+    <div class="app-body">
+      <div class="sidebar-slot" :class="{ collapsed: collapsed }">
+        <aside class="sidebar" :class="{ collapsed: collapsed }">
+          <nav class="sidebar-nav" :aria-label="t('nav.mainNavigation')">
+            <router-link
+              v-for="item in navItems"
+              :key="item.path"
+              :to="item.path"
+              class="sidebar-link"
+              :aria-label="t(item.label)"
+              :title="t(item.label)"
+              @click="onNavigate"
+            >
+              <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+                stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <path v-for="d in item.icon" :key="d" :d="d" />
+              </svg>
+              <span class="sidebar-label">{{ t(item.label) }}</span>
+            </router-link>
+          </nav>
+          <button
+            type="button"
+            class="sidebar-toggle"
+            :aria-expanded="String(!collapsed)"
+            :aria-label="collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')"
+            :title="collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')"
+            @click="toggleSidebar"
+          >
+            <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <path d="M3 5h18v14H3z" />
+              <path d="M9 5v14" />
+              <path :d="collapsed ? 'M14 9l3 3-3 3' : 'M17 9l-3 3 3 3'" />
+            </svg>
+            <span class="sidebar-label">{{ collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar') }}</span>
+          </button>
+        </aside>
+        <div v-if="overlayOpen" class="sidebar-backdrop" @click="onNavigate"></div>
+      </div>
+      <div class="app-column">
+        <FilterBar />
+        <main class="main-content">
+          <router-view />
+        </main>
+      </div>
+    </div>
 
     <ProfileDetailsModal
       :is-open="showProfileDetails"
@@ -58,7 +79,7 @@
 </template>
 
 <script>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { api } from './api'
 import { useAuth } from './composables/useAuth'
 import { useI18n } from './composables/useI18n'
@@ -149,10 +170,92 @@ export default {
       }
     }
 
-    onMounted(loadTasks)
+    // Sidebar
+    const navItems = [
+      { path: '/', label: 'nav.overview', icon: ['M3 12l9-8 9 8', 'M5 10v10h5v-6h4v6h5V10'] },
+      { path: '/inventory', label: 'nav.inventory', icon: ['M21 8l-9-5-9 5 9 5 9-5z', 'M3 8v8l9 5 9-5V8', 'M12 13v8'] },
+      { path: '/orders', label: 'nav.orders', icon: ['M9 3h6v3H9z', 'M7 5H5v16h14V5h-2', 'M9 12h6', 'M9 16h6'] },
+      { path: '/spending', label: 'nav.finance', icon: ['M12 2v20', 'M17 6H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6'] },
+      { path: '/demand', label: 'nav.demandForecast', icon: ['M3 17l6-6 4 4 8-8', 'M15 7h6v6'] },
+      { path: '/restocking', label: 'nav.restocking', icon: ['M21 12a9 9 0 01-15.5 6.2', 'M3 12A9 9 0 018.5 5.8', 'M3 4v5h5', 'M21 20v-5h-5'] },
+      { path: '/reports', label: 'nav.reports', icon: ['M14 3H6v18h12V7z', 'M14 3v4h4', 'M9 13h6', 'M9 17h6'] }
+    ]
+
+    const STORAGE_KEY = 'sidebarCollapsed'
+    const MOBILE_QUERY = '(max-width: 767px)'
+    let mql = null
+
+    const readSaved = () => {
+      try {
+        const v = window.localStorage.getItem(STORAGE_KEY)
+        if (v === '1') return true
+        if (v === '0') return false
+      } catch (e) { /* storage unavailable */ }
+      return null
+    }
+    const saveCollapsed = (value) => {
+      try {
+        window.localStorage.setItem(STORAGE_KEY, value ? '1' : '0')
+      } catch (e) { /* storage unavailable */ }
+    }
+
+    const isMobile = ref(false)
+    try {
+      mql = window.matchMedia(MOBILE_QUERY)
+      isMobile.value = mql.matches
+    } catch (e) { /* matchMedia unavailable */ }
+
+    const saved = readSaved()
+    // On small screens an expanded sidebar is an overlay, so never open it on load
+    const collapsed = ref(isMobile.value ? true : (saved === null ? false : saved))
+    let hasPreference = saved !== null
+
+    const onMediaChange = (e) => {
+      isMobile.value = e.matches
+      if (!hasPreference) collapsed.value = e.matches
+    }
+
+    const toggleSidebar = () => {
+      collapsed.value = !collapsed.value
+      hasPreference = true
+      saveCollapsed(collapsed.value)
+    }
+
+    // Expanded sidebar overlays content on small screens
+    const overlayOpen = computed(() => isMobile.value && !collapsed.value)
+
+    const onNavigate = () => {
+      // Close the overlay after navigating on small screens (not saved as preference)
+      if (overlayOpen.value) collapsed.value = true
+    }
+
+    const onKeydown = (e) => {
+      if (e.key === 'Escape' && overlayOpen.value) collapsed.value = true
+    }
+
+    onMounted(() => {
+      loadTasks()
+      if (mql) {
+        if (mql.addEventListener) mql.addEventListener('change', onMediaChange)
+        else if (mql.addListener) mql.addListener(onMediaChange)
+      }
+      window.addEventListener('keydown', onKeydown)
+    })
+    onBeforeUnmount(() => {
+      if (mql) {
+        if (mql.removeEventListener) mql.removeEventListener('change', onMediaChange)
+        else if (mql.removeListener) mql.removeListener(onMediaChange)
+      }
+      window.removeEventListener('keydown', onKeydown)
+    })
 
     return {
       t,
+      navItems,
+      collapsed,
+      overlayOpen,
+      toggleSidebar,
+      onNavigate,
       showProfileDetails,
       showTasks,
       tasks,
@@ -203,14 +306,8 @@ body {
   height: 70px;
 }
 
-.nav-container > .nav-tabs {
-  margin-left: auto;
-  margin-right: 1rem;
-  min-width: 0;
-  overflow-x: auto;
-}
-
 .nav-container > .language-switcher {
+  margin-left: auto;
   margin-right: 1rem;
 }
 
@@ -235,40 +332,113 @@ body {
   border-left: 1px solid #e2e8f0;
 }
 
-.nav-tabs {
+.app-body {
+  flex: 1;
   display: flex;
-  gap: 0.25rem;
+  align-items: stretch;
+  min-width: 0;
 }
 
-.nav-tabs a {
-  padding: 0.625rem 1.25rem;
+.app-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-slot {
+  position: relative;
+  flex: 0 0 220px;
+  width: 220px;
+  transition: flex-basis 0.2s ease, width 0.2s ease;
+}
+
+.sidebar-slot.collapsed {
+  flex-basis: 64px;
+  width: 64px;
+}
+
+.sidebar {
+  position: sticky;
+  top: 70px;
+  height: calc(100vh - 70px);
+  width: 100%;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem 0.5rem;
+  overflow: hidden;
+  z-index: 95;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sidebar-link,
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 40px;
+  padding: 0 0.75rem;
   color: #64748b;
   text-decoration: none;
+  font-family: inherit;
   font-weight: 500;
   font-size: 0.938rem;
+  white-space: nowrap;
+  border: none;
+  background: transparent;
   border-radius: 6px;
-  transition: all 0.2s ease;
-  position: relative;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-.nav-tabs a:hover {
+.sidebar-link:hover,
+.sidebar-toggle:hover {
   color: #0f172a;
   background: #f1f5f9;
 }
 
-.nav-tabs a.active {
+.sidebar-link:focus-visible,
+.sidebar-toggle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+
+.sidebar-link.router-link-exact-active {
   color: #2563eb;
   background: #eff6ff;
 }
 
-.nav-tabs a.active::after {
-  content: '';
+.nav-icon {
+  flex: 0 0 20px;
+}
+
+.sidebar-toggle {
+  margin-top: 0.5rem;
+  border-top: 1px solid #e2e8f0;
+  border-radius: 0 0 6px 6px;
+  height: 48px;
+}
+
+.sidebar.collapsed .sidebar-label {
   position: absolute;
-  bottom: -1px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: #2563eb;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.sidebar-backdrop {
+  display: none;
 }
 
 .main-content {
@@ -277,6 +447,103 @@ body {
   width: 100%;
   margin: 0 auto;
   padding: 1.5rem 2rem;
+}
+
+@media (max-width: 767px) {
+  .nav-container {
+    padding: 0 1rem;
+  }
+
+  .logo .subtitle {
+    display: none;
+  }
+
+  .nav-container > .language-switcher {
+    margin-right: 0.5rem;
+  }
+
+  /* Collapsed rail stays in flow; expanded sidebar overlays content */
+  .sidebar-slot,
+  .sidebar-slot.collapsed {
+    flex: 0 0 56px;
+    width: 56px;
+  }
+
+  .sidebar-slot:not(.collapsed) .sidebar {
+    position: fixed;
+    top: 70px;
+    left: 0;
+    width: 220px;
+    box-shadow: 4px 0 16px rgba(15, 23, 42, 0.12);
+    z-index: 110;
+  }
+
+  .sidebar-slot:not(.collapsed) .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    top: 70px;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: rgba(15, 23, 42, 0.35);
+    z-index: 105;
+  }
+
+  .sidebar {
+    padding: 0.75rem 0.375rem;
+  }
+
+  .app .filters-bar .filters-container {
+    padding: 0 1rem;
+  }
+
+  .main-content {
+    padding: 1rem;
+  }
+
+  .logo h1 {
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  .nav-container > .logo {
+    min-width: 0;
+  }
+
+  .nav-container .profile-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .app .filters-bar .filters-container,
+  .app .filters-bar .filters-grid {
+    flex-wrap: wrap;
+  }
+
+  .app .filters-bar {
+    position: static;
+  }
+
+  /* Dashboard two-column chart grid must stack next to the sidebar rail */
+  .app .main-content .charts-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app .main-content .order-health-container {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app .filters-bar .filters-grid {
+    gap: 0.5rem 0.75rem;
+  }
+
+  .app .filters-bar .filter-select {
+    min-width: 0;
+  }
 }
 
 .page-header {
