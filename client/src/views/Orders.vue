@@ -74,6 +74,40 @@
           </table>
         </div>
       </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">{{ t('orders.submitted.title') }} ({{ restockOrders.length }})</h3>
+        </div>
+        <div v-if="restockError" class="error">{{ restockError }}</div>
+        <div v-else-if="!restockOrders.length" class="restock-empty">{{ t('orders.submitted.empty') }}</div>
+        <div v-else class="restock-table-wrapper">
+          <table class="restock-table">
+            <thead>
+              <tr>
+                <th>{{ t('orders.table.orderNumber') }}</th>
+                <th>{{ t('orders.submitted.submittedDate') }}</th>
+                <th class="num">{{ t('orders.submitted.leadTime') }}</th>
+                <th>{{ t('orders.table.expectedDelivery') }}</th>
+                <th class="num">{{ t('orders.submitted.itemCount') }}</th>
+                <th class="num">{{ t('orders.table.totalValue') }}</th>
+                <th>{{ t('orders.table.status') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="order in restockOrders" :key="order.id">
+                <td><strong>{{ order.order_number }}</strong></td>
+                <td>{{ formatDate(order.submitted_at) }}</td>
+                <td class="num">{{ order.lead_time_days }}</td>
+                <td>{{ formatDate(order.expected_delivery) }}</td>
+                <td class="num">{{ order.item_count }}</td>
+                <td class="num"><strong>{{ formatUsd(order.total_value) }}</strong></td>
+                <td><span class="badge info">{{ order.status }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -83,6 +117,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { api } from '../api'
 import { useFilters } from '../composables/useFilters'
 import { useI18n } from '../composables/useI18n'
+import { formatCurrency } from '../utils/currency'
 
 export default {
   name: 'Orders',
@@ -95,6 +130,8 @@ export default {
     const loading = ref(true)
     const error = ref(null)
     const orders = ref([])
+    const restockOrders = ref([])
+    const restockError = ref(null)
 
     // Use shared filters
     const {
@@ -153,13 +190,32 @@ export default {
       })
     }
 
-    onMounted(loadOrders)
+    const loadRestockOrders = async () => {
+      try {
+        restockError.value = null
+        const data = await api.getRestockOrders()
+        restockOrders.value = Array.isArray(data) ? data : []
+      } catch (err) {
+        restockError.value = t('orders.submitted.loadError')
+        console.error(err)
+      }
+    }
+
+    const formatUsd = (amount) => formatCurrency(Number(amount) || 0, currentCurrency.value)
+
+    onMounted(() => {
+      loadOrders()
+      loadRestockOrders()
+    })
 
     return {
       t,
       loading,
       error,
       orders,
+      restockOrders,
+      restockError,
+      formatUsd,
       getOrdersByStatus,
       getOrderStatusClass,
       formatDate,
@@ -274,6 +330,27 @@ export default {
 
 .item-meta {
   font-size: 0.813rem;
+  color: #64748b;
+}
+
+/* Submitted (restocking) orders */
+.restock-table-wrapper {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.restock-table {
+  min-width: 700px;
+}
+
+.restock-table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.restock-empty {
+  text-align: center;
+  padding: 2rem;
   color: #64748b;
 }
 </style>

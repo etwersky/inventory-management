@@ -22,6 +22,9 @@
           <router-link to="/demand" :class="{ active: $route.path === '/demand' }">
             {{ t('nav.demandForecast') }}
           </router-link>
+          <router-link to="/restocking" :class="{ active: $route.path === '/restocking' }">
+            {{ t('nav.restocking') }}
+          </router-link>
           <router-link to="/reports" :class="{ active: $route.path === '/reports' }">
             Reports
           </router-link>
@@ -203,6 +206,8 @@ body {
 .nav-container > .nav-tabs {
   margin-left: auto;
   margin-right: 1rem;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .nav-container > .language-switcher {
